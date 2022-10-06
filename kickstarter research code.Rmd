@@ -1,16 +1,14 @@
----
+-—
 title: ""
 output: html_document
----
-\
-\
+-—
 
-### **Разведывательный анализ данных платформы Kickstarter с целью определить, какой проект с наибольшей вероятностью сможет стать успешным.** ###
 
-\
+## Разведывательный анализ данных платформы Kickstarter с целью определить, какой проект с наибольшей вероятностью сможет стать успешным. ##
 
-С помощью статистического теста Хи квадрат определим, от каких переменных исходного датасета 
-\
+
+С помощью статистического теста Хи квадрат определим, от каких переменных исходного датасета
+
 зависит успех проекта - state (т.е. для каких переменных P-value < 0.05)
 
 
@@ -31,13 +29,10 @@ kickstarter = full_join(kickstarter, goals, by = 'id')
 binar = ifelse(kickstarter$state == 'successful', 1, 0)
 BIN = kickstarter %>% mutate(binar = binar)
 BIN$binar = as.numeric(BIN$binar)
-
 #узнаем с помощью теста Хи квадрат, от каких переменных датасета зависит переменная успех (state)
-
 func <- function(a){
-  chisq = chisq.test(kickstarter$state, a)$p.value
+chisq = chisq.test(kickstarter$state, a)$p.value
 }
-
 name_p.value = func(kickstarter$name)
 category_p.value = func(kickstarter$category)
 main_category_p.value = func(kickstarter$main_category)
@@ -47,23 +42,18 @@ launched_p.value = func(kickstarter$launched)
 backers_p.value = func(kickstarter$backers)
 country_p.value = func(kickstarter$country)
 goal_p.value = func(kickstarter$usd_goal_real)
-
 dependence.hi = data.frame(p.values = c(name_p.value, category_p.value, main_category_p.value, currency_p.value, deadline_p.value, launched_p.value, backers_p.value, country_p.value, goal_p.value), characteristics = c('name', 'category', 'main_category', 'currency', 'deadline', 'launched', 'backers', 'country', 'goal')) %>% arrange(-p.values)
-
 knitr::kable(dependence.hi)
 ```
 
 *Как мы видим, статус проекта зависит от всех переменных, кроме "launched" и "name".*
 
-Однако проводить анализ такого количества характеристик затруднительно. 
-\
-\
+Однако проводить анализ такого количества характеристик затруднительно.
+
 Поэтому, чтобы выделить наиболее важные из них, мы:
-\
+
 1. Разделим выборку на обучающую и тестовую (чтобы в будущем убедиться в том, что модель работает не только на исходных данных).
-\
 2. Построим дерево, зависящее сразу от всех переменных датасета
-\
 3. "Обрежем" дерево так, чтобы по нему было удобно производить анализ.
 
 
@@ -71,231 +61,162 @@ knitr::kable(dependence.hi)
 set.seed(24601)
 train = kickstarter %>% sample_frac(0.8) %>% dplyr::select(-name, -launched)
 test = anti_join(kickstarter, train, by ='id') %>% dplyr::select(-name, -launched)
-
 #построим дерево, включающее все переменные
 set.seed(24601)
 treeB = rpart(state ~ ., data = train, control=rpart.control(cp=0.0001))
 #поскольку дерево чересчур подробное, и не будет работать на тестовой выборке, "обрежем" его на наиболее оптимальном СР (где xerror минимальное)
-
 #treeB$cptable
 #идеальный СР = 0.0002942641
-
 #построим новое дерево - С - с идеальным СР
 treeC = prune(treeB, cp=0.0002942641)
-
 #заметим, что дерево С также не читабельное:
 #prp(treeC, extra = 4)
-
 #изменим СР, увеличив немного Xerror для того, чтобы было возможно анализировать полученное дерево
 treeD = prune(treeB, cp=0.0207795735)
 rpart.plot::rpart.plot(treeD, extra=4)
-
 ```
 
-*Из полученного дерева мы видим, что наиболее значительную роль в определении успеха играют* 
-\
+*Из полученного дерева мы видим, что наиболее значительную роль в определении успеха играют*
 *такие факторы, как: "backers" и "usd_goal_real".*
-\
-\
 
 Проверим точность полученной модели.
 
 ```{r echo = F, message = F, warning = F}
 #уверимся, что наше немного рандомно выбранное СР не сильно портит точность модели
-
 #точность обучающей модели
 predD = predict(treeD, type='class')
 t5 = table(train$state, predD)
 knitr::kable(t5)
 t_5 = (t5[1,1] + t5[2,2])/sum(t5)
-# >>>>>> 0.9050998
-
+# »»» 0.9050998
 ```
 
-#### **точность обучающей модели = 0.9050998** ####
+**точность обучающей модели = 0.9050998**
 
 ```{r echo = F, message = F, warning = F}
-
 #точность тестовой выборки
 predD_test = predict(treeD, type='class', newdata=test)
 t6 = table(test$state, predD_test)
 knitr::kable(t6)
-t_6 = (t6[1,1] + t6[2,2])/sum(t6) 
-# >>>>>> 0.9026191
-
-#точность модели довольно высокая, значит СР подобрано удачно
+t_6 = (t6[1,1] + t6[2,2])/sum(t6)
+# »»» 0.9026191
+#точность модели довольно высокая,
+значит СР подобрано удачно
 ```
 
-#### **точность тестовой модели = 0.9026191** ####
+**точность тестовой модели = 0.9026191**
 
-\
+
 Получается, статус проекта в основном зависит от таких переменных, как "Goal" и "Backers".
-\
 При этом, вероятность ошибиться, предсказывая по этим двум категориям успех, менее 10% (точность модели > 90%).
-\
 
-\
-
-\
-
-### *Рассмотрим подробнее характеристику "usd_goal_real"* ###
-
-\
+*Рассмотрим подробнее характеристику "usd_goal_real"*
 
 Насколько сильна взаимосвязь между стоимостью (usd_goal_real) и успешностью (state) проекта?
 
 ```{r echo = F, message = F, warning = F}
-
-### U S D      G O A L     R E A L ###
-
+### U S D G O A L R E A L ###
 #Насколько сильна взаимосвязь между стоимостью и успешностью проекта?
 #Какая должна быть стоимость, чтобы проект с наибольшей вероятностью ждал успех?
-
 #определим точность модели, утверждающей, что state зависит от usd_goal_real
 set.seed(24601)
 train = kickstarter %>% sample_frac(0.8)
 test = anti_join(kickstarter, train, by ='id')
 treeA.goal = rpart(state ~ usd_goal_real, method = 'class', data = train)
-
 #точность обучающей модели
 predA.goal = predict(treeA.goal, type='class')
 goal.t1 = table(predA.goal, train$state)
 knitr::kable(goal.t1)
-goal.t_1 = (goal.t1[1,1] + goal.t1[2,2])/sum(goal.t1)    
-# >>>>>> 0.6060055
-
+goal.t_1 = (goal.t1[1,1] + goal.t1[2,2])/sum(goal.t1)
+# »»» 0.6060055
 ```
 
-#### **точность обучающей модели = 0.6060055** ####
+**точность обучающей модели = 0.6060055**
 
 ```{r echo = F, message = F, warning = F}
-
 #точность тестовой выборки
 predA_test.goal = predict(treeA.goal, type='class', newdata = test)
 goal.t2 = table(predA_test.goal, test$state)
 knitr::kable(goal.t2)
-goal.t_2 = (goal.t2[1,1] + goal.t2[2,2])/sum(goal.t2) 
-# >>>>>> 0.6048229
+goal.t_2 = (goal.t2[1,1] + goal.t2[2,2])/sum(goal.t2)
+# »»» 0.6048229
 ```
 
-#### **точность тестовой модели = 0.6048229** ####
-
-\
-\
+**точность тестовой модели = 0.6048229**
 
 ```{r echo = F, message = F, warning = F}
-
 #для того, чтобы наглядно показать, как конкретно связана цена проекта с его успехом, построим дерево
-
 #prp(treeA.goal, extra = 4)
-
 #чем меньше usd_goal_real, тем с большей вероятностью проект станет успешным
 #убедимся в этом на боксплоте по исходным данным
-
-
 options(scipen=999)
-ggplot(kickstarter) + geom_boxplot(aes(x = state, y = usd_goal_real), colour = c('lightcoral', 'lightgreen'), size = 4) + xlab('Статус проекта') +  ylab('Количество денег, потраченных на проект') + scale_x_discrete(labels = c('проваленный', 'успешный')) + ggtitle('Какая должна быть стоимость, чтобы проект с\nнаибольшей вероятностью ждал успех?')
-
-
+ggplot(kickstarter) + geom_boxplot(aes(x = state, y = usd_goal_real), colour = c('lightcoral', 'lightgreen'), size = 4) + xlab('Статус проекта') + ylab('Количество денег, потраченных на проект') + scale_x_discrete(labels = c('проваленный', 'успешный')) + ggtitle('Какая должна быть стоимость, чтобы проект с\nнаибольшей вероятностью ждал успех?')
 ```
-\
 
-\
-
-\
-
-\
-
-### *Рассмотрим подробнее характеристику "backers"* ###
-
-\
+*Рассмотрим подробнее характеристику "backers"*
 
 Насколько сильна взаимосвязь между количеством инвесторов (backers) и успешностью проекта (state)?
 
 ```{r echo = F, message = F, warning = F}
-
 ### B A C K E R S ###
-
 #Насколько сильна взаимосвязь между количеством инвесторов и успешностью проекта?
 #Сколько инвесторов должно вложиться, чтобы проект с наибольшей вероятностью ждал успех?
-
 #определим точность модели, утверждающей, что state зависит от backers
 set.seed(24601)
 train = kickstarter %>% sample_frac(0.8)
 test = anti_join(kickstarter, train, by ='id')
 treeA.backers = rpart(state ~ backers, method = 'class', data = train)
-
 #точность обучающей модели
 predA.backers = predict(treeA.backers, type='class')
 backers.t1 = table(predA.backers, train$state)
 knitr::kable(backers.t1)
 backers.t_1 = (backers.t1[1,1] + backers.t1[2,2])/sum(backers.t1)
-# >>>>>> 0.8534095
+# »»» 0.8534095
 ```
 
-#### **точность обучающей модели = 0.8534095** ####
+**точность обучающей модели = 0.8534095**
 
 ```{r echo = F, message = F, warning = F}
-
 #точность тестовой выборки
 predA_test.backers = predict(treeA.backers, type='class', newdata = test)
 backers.t2 = table(predA_test.backers, test$state)
 knitr::kable(backers.t2)
 backers.t_2 = (backers.t2[1,1] + backers.t2[2,2])/sum(backers.t2)
-# >>>>>> 0.8532364
+# »»» 0.8532364
 ```
 
-#### **точность тестовой модели = 0.8532364** ####
-
-\
-\
+**точность тестовой модели = 0.8532364**
 
 ```{r echo = F, message = F, warning = F}
-
 #для того, чтобы наглядно показать, как конкретно связана цена проекта с его успехом, построим дерево
-
 #prp(treeA.backers, extra = 4)
-
 #чем больше backers, тем с большей вероятностью проект станет успешным
 #убедимся в этом на боксплоте по исходным данным
-
-
-
-ggplot(kickstarter) + geom_boxplot(aes(x = state, y = backers), colour = c('lightcoral', 'lightgreen'), size = 4) + xlab('Статус проекта') +  ylab('Количество инвесторов проекта') + scale_x_discrete(labels = c('проваленный', 'успешный')) + scale_fill_brewer(name = 'Статус', labels=c("Нет","Да"), palette = 'PuRd') + ggtitle('Сколько инвесторов должно вложиться, чтобы проект\nс наибольшей вероятностью ждал успех?')
+ggplot(kickstarter) + geom_boxplot(aes(x = state, y = backers), colour = c('lightcoral', 'lightgreen'), size = 4) + xlab('Статус проекта') + ylab('Количество инвесторов проекта') + scale_x_discrete(labels = c('проваленный', 'успешный')) + scale_fill_brewer(name = 'Статус',
+labels=c("Нет","Да"), palette = 'PuRd') + ggtitle('Сколько инвесторов должно вложиться, чтобы проект\nс наибольшей вероятностью ждал успех?')
 ```
-\
 
-\
 
-\
-
-#### Какой вывод можно сделать из полученных данных? ####
-#### Как мы можем оптимизировать выбор, планируя проект? ####
+## Какой вывод можно сделать из полученных данных? ##
+## Как мы можем оптимизировать выбор, планируя проект? ##
 
 **1. Свести к минимуму затраты на проект (однако лишь эта мера даст нам желаемый результат с точностью только 60%).**
-\
 **2. Привлечь к проекту максимальное количество инвесторов.**
-\
-\
-Очевидно, что первый фактор мы можем контролировать. Но возможно ли повлиять на второй? 
-\
+Очевидно, что первый фактор мы можем контролировать. Но возможно ли повлиять на второй?
 
-#### От чего зависит выбор инвесторов? ####
-#### Сможем ли мы оказать влияние на их решение? ####
 
-\
-\
+От чего зависит выбор инвесторов?
+Сможем ли мы оказать влияние на их решение?
+
+
 C помощью теста Хи квадрат попробуем узнать, от каких переменных датасета зависят
-\
 решения инвесторов (то есть для каких переменных значение P-value < 0.05)
 
 ```{r echo = F, message = F, warning = F}
-
 #узнаем с помощью теста Хи квадрат, от каких переменных датасета зависят решения инвесторов
 fun <- function(e){
-  chisq = chisq.test(kickstarter$backers, e)$p.value
+chisq = chisq.test(kickstarter$backers, e)$p.value
 }
-
 name_p.value = fun(kickstarter$name)
 category_p.value = fun(kickstarter$category)
 main_category_p.value = fun(kickstarter$main_category)
@@ -305,190 +226,143 @@ launched_p.value = fun(kickstarter$launched)
 state_p.value = fun(kickstarter$state)
 country_p.value = fun(kickstarter$country)
 goal_p.value = fun(kickstarter$usd_goal_real)
-
 dependence.hi_backers = data.frame(p.values = c(name_p.value, category_p.value, main_category_p.value, currency_p.value, deadline_p.value, launched_p.value, state_p.value, country_p.value, goal_p.value), categories = c('name', 'category', 'main_category', 'currency', 'deadline', 'launched', 'state', 'country', 'goal')) %>% arrange(-p.values)
-
 knitr::kable(dependence.hi_backers)
 options(scipen=999)
 ```
 
 Как видим, статус зависит от переменных **name** и **state**.
-\
-Зависимость backers от state, была получена ранее, поэтому обратим внимание именно на **name**. 
-\
-Попробуем выяснить, каким образом эта переменная влияет на количество инвесторов. 
-\
+
+Зависимость backers от state, была получена ранее, поэтому обратим внимание именно на **name**.
+
+Попробуем выяснить, каким образом эта переменная влияет на количество инвесторов.
 Узнаем, зависит ли количество инвесторов проекта от длины его названия, построив график на данных исходного датасета.
 
 ```{r echo = F, message = F, warning = F}
-
 #сможем ли мы по графику предсказать выбор инвесторов в зависимости от длины названия проекта?
 kickstarter = kickstarter %>% group_by(name) %>% mutate (length = str_count(name))
 ggplot(kickstarter) + geom_point(aes(x = backers, y = length), color = 'antiquewhite4', stat = 'identity') + theme_light() + xlab('Количество инвесторов проекта') + ylab('Длина названия проекта')
 #четкой взаимосвязи не прослеживается
-
 ```
-\
-\
 
-На графике невозможно заметить четкую взаимосвязь переменных. 
-\
-Но, может, мы просто не видим ее? 
-\
-\
+На графике невозможно заметить четкую взаимосвязь переменных.
+Но, может, мы просто не видим ее?
+
 *Проверим корреляцию с помощью теста Хи-квадрат.*
 
 ```{r echo = F, message = F, warning = F}
-
 #проверим зависимость на стат тесте
 chisq_len = chisq.test(kickstarter$backers, kickstarter$length)$p.value
 #p-value = 1 значит, корреляции нет
 print('P-value = 1')
 ```
-\
-Выходит, количество инвесторов зависит от названия проекта, однако не от его длины. 
-\
-Если мы будем строить слишком подробную модель на основе названия (не его длины, а других характеристик), 
-\
+
+Выходит, количество инвесторов зависит от названия проекта, однако не от его длины.
+
+Если мы будем строить слишком подробную модель на основе названия (не его длины, а других характеристик),
 она, скорее всего, не будет работать на тестовой выборке.
-\
-\
+
 Получается, что, исходя из представленных данных, **мы не можем доподлинно предсказать выбор инвесторов**.
-\
-\
-\
 
-#### **Сможем ли мы принять точно верное решение, создавая проект, основываясь лишь на его стоимости, учитывая, что точность такого решения лишь 60%?** ####
-#### **Скорее всего, нет.** ####
 
-\
-\
+## Сможем ли мы принять точно верное решение, создавая проект, основываясь лишь на его стоимости, учитывая, что точность такого решения лишь 60%? ##
+## Скорее всего, нет. ##
+
 
 Тогда вспомним, что в самом начале анализа мы отбросили несколько значимых переменных - category, main_category, country, currency, deadline.
 
 Исключив их, мы получили данные, учитывающие возможность ошибок в исходной выборке. Однако, поскольку анализ без этих переменных не привел к значимым результатам, рассмотрим их, пожертвовав при этом универсальностью модели. Найдем характеристики, которые предсказывают модель с максимальной точностью (accuracy).
 
-\
-\
 
 ```{r echo = F, message = F, warning = F}
 set.seed(24601)
 train = kickstarter %>% sample_frac(0.7) %>% dplyr::select(-name)
 test = anti_join(kickstarter, train, by ='id') %>% dplyr::select(-name)
-
-
-    treeA.category = rpart(state ~ category, method = 'class', data = train)
+treeA.category = rpart(state ~ category, method = 'class', data = train)
 predA.category = predict(treeA.category, type='class')
 category.t1 = table(predA.category, train$state)
-category.t_1 = (category.t1[1,1] + category.t1[2,2])/sum(category.t1)     
-    # >>>>>> 0.6415112
+category.t_1 = (category.t1[1,1] + category.t1[2,2])/sum(category.t1)
+# »»» 0.6415112
 predA_test.category = predict(treeA.category, type='class', newdata = test)
 category.t2 = table(predA_test.category, test$state)
-category.t_2 = (category.t2[1,1] + category.t2[2,2])/sum(category.t2) 
-    # >>>>>> 0.6129032
+category.t_2 = (category.t2[1,1] + category.t2[2,2])/sum(category.t2)
+# »»» 0.6129032
 #prp(treeA.category, extra = 4)
-
-
-    treeA.maincategory = rpart(state ~ main_category, method = 'class', data = train)
+treeA.maincategory = rpart(state ~ main_category, method = 'class', data = train)
 predA.maincategory = predict(treeA.maincategory, type='class')
 maincategory.t1 = table(predA.maincategory, train$state)
-maincategory.t_1 = (maincategory.t1[1,1] + maincategory.t1[2,2])/sum(maincategory.t1)       
-    # >>>>>> 0.5988231
+maincategory.t_1 = (maincategory.t1[1,1] + maincategory.t1[2,2])/sum(maincategory.t1)
+# »»» 0.5988231
 predA_test.maincategory = predict(treeA.maincategory, type='class', newdata = test)
 maincategory.t2 = table(predA_test.maincategory, test$state)
-maincategory.t_2 = (maincategory.t2[1,1] + maincategory.t2[2,2])/sum(maincategory.t2) 
-    # >>>>>> 0.5996308
+maincategory.t_2 = (maincategory.t2[1,1] + maincategory.t2[2,2])/sum(maincategory.t2)
+# »»» 0.5996308
 #prp(treeA.maincategory, extra = 4)
-
-
-    treeA.country = rpart(state ~ country, method = 'class', data = train)
+treeA.country = rpart(state ~ country, method = 'class', data = train)
 predA.country = predict(treeA.country, type='class')
 country.t1 = table(predA.country, train$state)
-country.t_1 = (country.t1[1,1] + country.t1[2,2])/sum(country.t1)       
-    # >>>>>> 0.5752279
+country.t_1 = (country.t1[1,1] + country.t1[2,2])/sum(country.t1)
+# »»» 0.5752279
 predA_test.country = predict(treeA.country, type='class', newdata = test)
 country.t2 = table(predA_test.country, test$state)
-country.t_2 = (country.t2[1,1] + country.t2[2,2])/sum(country.t2) 
-    # >>>>>> 0.5727472
+country.t_2 = (country.t2[1,1] + country.t2[2,2])/sum(country.t2)
+# »»» 0.5727472
 #prp(treeA.country, extra = 4)
-
-
-    treeA.currency = rpart(state ~ currency, method = 'class', data = train)
+treeA.currency = rpart(state ~ currency, method = 'class', data = train)
 predA.currency = predict(treeA.currency, type='class')
 currency.t1 = table(predA.currency, train$state)
-currency.t_1 = (currency.t1[1,1] + currency.t1[2,2])/sum(currency.t1)       
-    # >>>>>> 0.5752279
+currency.t_1 = (currency.t1[1,1] + currency.t1[2,2])/sum(currency.t1)
+# »»» 0.5752279
 predA_test.currency = predict(treeA.currency, type='class', newdata = test)
 currency.t2 = table(predA_test.currency, test$state)
-currency.t_2 = (currency.t2[1,1] + currency.t2[2,2])/sum(currency.t2) 
-    # >>>>>> 0.5727472
+currency.t_2 = (currency.t2[1,1] + currency.t2[2,2])/sum(currency.t2)
+# »»» 0.5727472
 #prp(treeA.currency, extra = 4)
-
-
-    treeA.deadline = rpart(state ~ deadline, method = 'class', data = train)
+treeA.deadline = rpart(state ~ deadline, method = 'class', data = train)
 predA.deadline = predict(treeA.deadline, type='class')
 deadline.t1 = table(predA.deadline, train$state)
-deadline.t_1 = (deadline.t1[1,1] + deadline.t1[2,2])/sum(deadline.t1)       
-    # >>>>>> 0.5752279
+deadline.t_1 = (deadline.t1[1,1] + deadline.t1[2,2])/sum(deadline.t1)
+# »»» 0.5752279
 predA_test.deadline = predict(treeA.deadline, type='class', newdata = test)
 deadline.t2 = table(predA_test.deadline, test$state)
-deadline.t_2 = (deadline.t2[1,1] + deadline.t2[2,2])/sum(deadline.t2) 
-    # >>>>>> 0.5727472
+deadline.t_2 = (deadline.t2[1,1] + deadline.t2[2,2])/sum(deadline.t2)
+# »»» 0.5727472
 #prp(treeA.deadline, extra = 4)
-
 frame = data.frame(characteristics = c('category', 'main_category', 'country', 'currency', 'deadline'), train_accuracy = c(category.t_1, maincategory.t_1, country.t_1, currency.t_1, deadline.t_1), test_accuracy = c(category.t_2, maincategory.t_2, country.t_2, currency.t_2, deadline.t_2))
-
 knitr::kable(frame)
-
 #ранее мы строили деревья, чтобы наглядно показать, как конкретно связана переменная с успехом. в этом случае построение дерева не дает нам какой-либо ценной информации
 ```
 
 Мы получили, что больше всего из упущенных нами сперва характеристик со статусом проекта коррелирует "category".
-\
 
-\
-
-\
 
 ### *Рассмотрим подробнее характеристику "category"* ###
 
-\
-
 В какую категорию с наибольшей вероятностью вложится максимальное число инвесторов?
-\
 (т.е. где "success_frequency" максимально?)
 
 ```{r echo = F, message = F, warning = F}
-
 #К какой категории должен принадлежать проект, чтобы его с наибольшей вероятностью ждал успех?
-
 kickstarter1 = BIN %>% group_by(category) %>% summarise(total_num = length(state))
-
 kickstarter2 = BIN %>% dplyr::select(category, binar) %>% group_by(category) %>% summarise(num_success = sum(binar))
-
-joined = full_join(kickstarter1, kickstarter2, by = 'category') 
-joined = joined %>% mutate(success_frequency = joined$num_success/joined$total_num) %>% arrange(-success_frequency) %>% filter(total_num>=50)
-
+joined = full_join(kickstarter1, kickstarter2, by = 'category')
+joined = joined %>% mutate(success_frequency =
+joined$num_success/joined$total_num) %>% arrange(-success_frequency) %>% filter(total_num>=50)
 DT::datatable(joined, options = list(
 bPaginate = TRUE
 ))
 #мы отфильтровали датасет так, чтобы в него попали лишь категории, встретившиеся в целом более 50ти раз, чтобы исключить возможность сделать вывод на основе случайной категории
-
 #получим, категории, которые с точностью примерно 64% ждет успех: Tabletop Games, Performances, Anthologies, Country & Folk, Comic Books
 ```
 
-\
-Отфильтровав датасет так, чтобы в него попали лишь категории, встретившиеся более 50ти раз (чтобы исключить возможность сделать случайный выбор), получим список категорий, которые (с точностью примерно 61-64%) ждет успех: 
-\
+Отфильтровав датасет так, чтобы в него попали лишь категории, встретившиеся более 50ти раз (чтобы исключить возможность сделать случайный выбор), получим список категорий, которые (с точностью примерно 61-64%) ждет успех:
 Tabletop Games, Performances, Anthologies, Country & Folk, Comic Books
 
-\
-\
-\
 
-#### **Какие выводы можно сделать теперь из нашего анализа?** ####
-#### **Как можно максимизировать вероятность успеха, принимая решение о судьбе проекта?** ####
 
-#### **1. Goal_real.** Необходимо определить минимальный размер необходимых для осуществления проекта средств. ####
-#### **2. Backers.** Нужно привлечь в проект наибольшее число инвесторов. Анализ не показал существенной взаимосвязи решений инвесторов с имеющимися у нас данными. Исходя из здравого смысла, предположим, что, чтобы максимизировать число инвесторов, необходимо воспользоваться маркетинговыми услугами. ####
-#### **3. Categories.** Наиболее "выигрышными" категориями с точки зрения успешности являются: Tabletop Games, Performances, Anthologies, Country & Folk, Comic Books. Следовательно, нужно ориентироваться на них, выбирая категорию проекта. ####
+## Какие выводы можно сделать теперь из нашего анализа? ##
+## Как можно максимизировать вероятность успеха, принимая решение о судьбе проекта? ##
+
+**1. Goal_real.** Необходимо определить минимальный размер необходимых для осуществления проекта средств.
+**2. Backers.** Нужно привлечь в проект наибольшее число инвесторов. Анализ не показал существенной взаимосвязи решений инвесторов с имеющимися у нас данными. Исходя из здравого смысла, предположим, что, чтобы максимизировать число инвесторов, необходимо воспользоваться маркетинговыми услугами.
+**3. Categories.** Наиболее "выигрышными" категориями с точки зрения успешности являются: Tabletop Games, Performances, Anthologies, Country & Folk, Comic Books. Следовательно, нужно ориентироваться на них, выбирая категорию проекта.rformances, Anthologies, Country & Folk, Comic Books. Следовательно, нужно ориентироваться на них, выбирая категорию проекта. ####
