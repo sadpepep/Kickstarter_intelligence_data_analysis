@@ -1,0 +1,105 @@
+---
+title: "<Анализ данных проектов патформы Kickstarter>"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+<style>
+.navbar {
+background-color:#6495ED;
+border-color:paleturquoise;
+}
+.navbar-brand {
+color:black!important;
+}
+
+</style>
+
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### **Дерево зависимости статуса успешности проекта от некоторых переменных**
+
+```{r}
+library(flexdashboard)
+library(stringr)
+library(ggplot2)
+library(dplyr)
+library(data.table)
+library(readr)
+library(rpart)
+library(rpart.plot)
+library(coin)
+library(stats)
+set.seed(24601)
+kickstarter = read_csv("~/shared/minor2_2020/1-Intro/hw2/kickstarter.csv")
+goals = read_csv("~/shared/minor2_2020/1-Intro/hw2/usd_goals.csv")
+kickstarter = full_join(kickstarter, goals, by = 'id')
+
+
+set.seed(24601)
+train = kickstarter %>% sample_frac(0.8) %>% dplyr::select(-name, -launched)
+test = anti_join(kickstarter, train, by ='id') %>% dplyr::select(-name, -launched)
+
+
+tree = rpart(state ~ ., data = train, control=rpart.control(cp=0.0207795735))
+rpart.plot::rpart.plot(tree, cex = 0.8)
+```
+
+Column {data-width=500, data-height=50}
+-----------------------------------------------------------------------
+
+### **Точность модели на обучающей выборке**
+
+```{r}
+
+pred = predict(tree, type='class')
+t = table(train$state, pred)
+t0 = 100*(t[1,1] + t[2,2])/sum(t) 
+t0_r = round(t0, digits = 1) 
+t0_per = str_c(t0_r, "%")
+
+valueBox(t0_per, icon = 'fa-graduation-cap', color = '#8FBC8F')
+
+```
+
+### **Точность модели на тестовой выборке**
+
+```{r}
+
+pred_test = predict(tree, type='class', newdata=test)
+r = table(test$state, pred_test)
+r0 = 100*(r[1,1] + r[2,2])/sum(r) 
+r0_r = round(r0, digits = 1) 
+r0_per = str_c(r0_r, "%")
+
+valueBox(r0_per, icon = 'fa-file-alt', color = '#8FBC8F')
+
+```
+
+### Кроме usd_goal_real и backers, на успешность проекта также влияет category
+
+```{r}
+
+
+binar = ifelse(kickstarter$state == 'successful', 1, 0)
+BIN = kickstarter %>% mutate(binar = binar)
+BIN$binar = as.numeric(BIN$binar)
+kickstarter1 = BIN %>% group_by(category) %>% summarise(total_num = length(state))
+
+kickstarter2 = BIN %>% dplyr::select(category, binar) %>% group_by(category) %>% summarise(num_success = sum(binar))
+
+joined = full_join(kickstarter1, kickstarter2, by = 'category') 
+joined = joined %>% mutate(success_frequency = joined$num_success/joined$total_num) %>% arrange(-success_frequency) %>% filter(total_num>=50)
+
+rund = round(100*joined$success_frequency, digits = 1)
+
+jo = data.frame(Category = joined$category, Total_Num = joined$total_num, Num_Succeeded = joined$num_success, Success_Share = str_c(rund, '%'))
+
+DT::datatable(jo, options = list(
+bPaginate = TRUE
+))
+```
